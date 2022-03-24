@@ -1,6 +1,7 @@
 from .gru import build_gru
 from .m_resnet import build_m_resnet
 from .resnet import build_resnet
+from .transformer import build_vit
 
 
 def build_visual_model(cfg):
@@ -8,6 +9,8 @@ def build_visual_model(cfg):
         return build_resnet(cfg)
     if cfg.MODEL.VISUAL_MODEL in ["m_resnet50", "m_resnet101"]:
         return build_m_resnet(cfg)
+    if cfg.MODEL.VISUAL_MODEL in ["vit"]:
+        return build_vit(cfg)
     raise NotImplementedError
 
 

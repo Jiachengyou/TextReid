@@ -47,6 +47,54 @@ _C.MODEL.WEIGHT = "imagenet"
 
 
 # -----------------------------------------------------------------------------
+# VIT
+# -----------------------------------------------------------------------------
+_C.MODEL.VIT = CN()
+_C.MODEL.VIT.NAME = 'transformer'
+_C.MODEL.VIT.LAST_STRIDE = 1
+# Path to pretrained model of backbone
+_C.MODEL.VIT.PRETRAIN_PATH = './pretrained/clip/jx_vit_base_p16_224-80ecf9dd.pth'
+
+# Use ImageNet pretrained model to initialize backbone or use self trained model to initialize the whole model
+# Options: 'imagenet' , 'self' , 'finetune'
+_C.MODEL.VIT.PRETRAIN_CHOICE = 'imagenet'
+
+# If train with BNNeck, options: 'bnneck' or 'no'
+_C.MODEL.VIT.NECK = 'bnneck'
+# If train loss include center loss, options: 'yes' or 'no'. Loss with center loss has different optimizer configuration
+_C.MODEL.VIT.IF_WITH_CENTER = 'no'
+
+_C.MODEL.VIT.ID_LOSS_TYPE = 'softmax'
+_C.MODEL.VIT.ID_LOSS_WEIGHT = 1.0
+_C.MODEL.VIT.TRIPLET_LOSS_WEIGHT = 1.0
+
+_C.MODEL.VIT.METRIC_LOSS_TYPE = 'triplet'
+# If train with multi-gpu ddp mode, options: 'True', 'False'
+_C.MODEL.VIT.DIST_TRAIN = False
+# If train with soft triplet loss, options: 'True', 'False'
+_C.MODEL.VIT.NO_MARGIN = False
+# If train with label smooth, options: 'on', 'off'
+_C.MODEL.VIT.IF_LABELSMOOTH = 'on'
+# If train with arcface loss, options: 'True', 'False'
+_C.MODEL.VIT.COS_LAYER = False
+
+# Transformer setting
+_C.MODEL.VIT.DROP_PATH = 0.1
+_C.MODEL.VIT.DROP_OUT = 0.0
+_C.MODEL.VIT.ATT_DROP_RATE = 0.0
+_C.MODEL.VIT.TRANSFORMER_TYPE = 'vit_base_patch16_224_TransReID'
+_C.MODEL.VIT.STRIDE_SIZE = [16, 16]
+
+#SIE
+_C.MODEL.VIT.SIE_COE = 3.0
+_C.MODEL.VIT.SIE_CAMERA = False
+_C.MODEL.VIT.SIE_VIEW = False
+
+# add
+_C.MODEL.VIT.NECK_FEAT = 'before'
+
+
+# -----------------------------------------------------------------------------
 # MoCo
 # -----------------------------------------------------------------------------
 _C.MODEL.MOCO = CN()

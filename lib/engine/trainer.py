@@ -97,7 +97,7 @@ def do_train(
             eta_seconds = meters.time.global_avg * (max_iter - iteration)
             eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
 
-            if inner_iter % 1 == 0:
+            if inner_iter % 50 == 0:
                 logger.info(
                     meters.delimiter.join(
                         [

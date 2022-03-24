@@ -1,6 +1,6 @@
+*.out
 .ipynb_checkpoints
 *.pyc
-*.ipynb
 *.npy
 
 output/

@@ -16,6 +16,11 @@ class Model(nn.Module):
                 cfg, self.visual_model, self.textual_model
             )
             self.embed_type = "moco"
+        elif cfg.MODEL.EMBEDDING.EMBED_HEAD == "vit":
+            self.embed_model = build_embed(
+                cfg, 768, self.textual_model.out_channels
+            )
+            self.embed_type = "normal"
         else:
             self.embed_model = build_embed(
                 cfg, self.visual_model.out_channels, self.textual_model.out_channels
@@ -25,10 +30,9 @@ class Model(nn.Module):
     def forward(self, images, captions):
         if self.embed_type == "moco":
             return self.embed_model(images, captions)
-
+        
         visual_feat = self.visual_model(images)
         textual_feat = self.textual_model(captions)
-
         outputs_embed, losses_embed = self.embed_model(
             visual_feat, textual_feat, captions
         )
