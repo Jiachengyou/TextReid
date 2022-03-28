@@ -33,6 +33,7 @@ class Model(nn.Module):
         
         visual_feat = self.visual_model(images)
         textual_feat = self.textual_model(captions)
+        
         outputs_embed, losses_embed = self.embed_model(
             visual_feat, textual_feat, captions
         )

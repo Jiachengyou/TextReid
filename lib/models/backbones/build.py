@@ -1,4 +1,5 @@
 from .gru import build_gru
+from .text_vit import build_text_vit
 from .m_resnet import build_m_resnet
 from .resnet import build_resnet
 from .transformer import build_vit
@@ -17,4 +18,6 @@ def build_visual_model(cfg):
 def build_textual_model(cfg):
     if cfg.MODEL.TEXTUAL_MODEL == "bigru":
         return build_gru(cfg, bidirectional=True)
+    elif cfg.MODEL.TEXTUAL_MODEL == "vit":
+        return build_text_vit(cfg)
     raise NotImplementedError

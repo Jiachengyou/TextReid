@@ -29,7 +29,6 @@ class Caption(object):
 
         if not padded and not isinstance(text, str):
             text = self.pad(text, max_length, device)
-
         self.text = text
         self.length = length
         self.max_length = max_length

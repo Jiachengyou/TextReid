@@ -60,6 +60,7 @@ class GRU(nn.Module):
             text = self.embed(text)
 
         gru_out = self.gru_out(text, text_length)
+#         print(gru_out.shape)
         gru_out, _ = torch.max(gru_out, dim=1)
         return gru_out
 

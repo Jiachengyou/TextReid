@@ -4,6 +4,7 @@ import random
 
 import numpy as np
 import torch
+# torch.multiprocessing.set_sharing_strategy('file_system')
 import torch.nn.parallel
 import torch.optim
 import torch.utils.data
@@ -125,6 +126,11 @@ def main():
         type=str,
     )
     parser.add_argument(
+        "--output-dir",
+        help="the outputdir file to resume from",
+        type=str,
+    )
+    parser.add_argument(
         "--local_rank",
         default=0,
         type=int,
@@ -157,10 +163,14 @@ def main():
     cfg.merge_from_list(args.opts)
     cfg.ROOT = args.root
     cfg.freeze()
-
-    output_dir = os.path.join(
-        args.root, "./output", "/".join(args.config_file.split("/")[-2:])[:-5]
+    if args.output_dir:
+        output_dir = os.path.join(
+        args.root, "./output", args.output_dir
     )
+    else:
+        output_dir = os.path.join(
+            args.root, "./output", "/".join(args.config_file.split("/")[-2:])[:-5]
+        )
     makedir(output_dir)
 
     logger = setup_logger("PersonSearch", output_dir, get_rank())
