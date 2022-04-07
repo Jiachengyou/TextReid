@@ -1,6 +1,7 @@
 from torch import nn
-
-from .backbones import build_textual_model, build_visual_model
+import copy
+from functools import partial
+from .backbones import build_textual_model, build_visual_model, build_share_block_model
 from .embeddings import build_embed
 from .embeddings.moco_head.head import build_moco_head
 
@@ -10,6 +11,10 @@ class Model(nn.Module):
         super().__init__()
         self.visual_model = build_visual_model(cfg)
         self.textual_model = build_textual_model(cfg)
+        
+        share = True
+        if share:
+            self.share_block_model = build_share_block_model(cfg)
 
         if cfg.MODEL.EMBEDDING.EMBED_HEAD == "moco":
             self.embed_model = build_moco_head(
@@ -26,13 +31,44 @@ class Model(nn.Module):
                 cfg, self.visual_model.out_channels, self.textual_model.out_channels
             )
             self.embed_type = "normal"
-
+            
+        
+            
+        #share
+#         self.text_share_block = copy.deepcopy(share_block)
+#         self.visual_share_block = copy.deepcopy(share_block)
+        
+#         self.text_share_block = share_block
+# #         self.visual_share_block = share_block
+        
+#         self.bottleneck = copy.deepcopy(bottleneck)
+        
+#         norm = share_block[0].norm1
+#         self.norm_text = copy.deepcopy(norm)
+#         self.norm_visual = copy.deepcopy(norm)
+        
+    def forward_share(self, visual, text, mask=None):
+        for blk in self.text_share_block:
+            visual = blk(visual)
+        visual = self.norm_visual(visual)
+        visual = self.bottleneck(visual[:,0])
+        for blk in self.text_share_block[-6:]:
+            text = blk(text)
+#             print(text.shape)
+        text = self.norm_text(text) 
+        
+        return visual,text[:, 0]
     def forward(self, images, captions):
         if self.embed_type == "moco":
             return self.embed_model(images, captions)
         
-        visual_feat = self.visual_model(images)
-        textual_feat = self.textual_model(captions)
+        text = self.textual_model(captions)
+        visual = self.visual_model(images)
+
+        
+        visual_feat, textual_feat = self.share_block_model(visual, text)
+
+#         visual_feat, textual_feat = self.forward_share(visual_feat, text, mask=key_padding_mask)
         
         outputs_embed, losses_embed = self.embed_model(
             visual_feat, textual_feat, captions

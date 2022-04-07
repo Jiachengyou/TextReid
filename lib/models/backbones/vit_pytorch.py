@@ -22,9 +22,9 @@ from itertools import repeat
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch._six import container_abcs
-
-
+# from torch._six import container_abcs
+import collections.abc as container_abcs
+import copy
 # From PyTorch internals
 def _ntuple(n):
     def parse(x):
@@ -142,12 +142,18 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
+#         print(attn.shape)
+        if mask is not None:
+            B,L = mask.shape
+            mask = mask.view(B, 1, 1, L).expand(-1, self.num_heads, -1, -1)
+#             print(mask.shape)
+            attn = attn.masked_fill(mask, -1e9)
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
@@ -167,13 +173,39 @@ class Block(nn.Module):
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        # text
+        
+#         self.attn_text = copy.deepcopy(self.attn)
+#         self.mlp_text = copy.deepcopy(self.mlp)
+#         self.norm1_text = copy.deepcopy(self.norm1)
+#         self.norm2_text = copy.deepcopy(self.norm2)
+        self.attn_text = self.attn
+        self.mlp_text = self.mlp
+        self.norm1_text = self.norm1
+        self.norm2_text = self.norm2
+        self.drop_path_text = DropPath(0.1)
+    
+    
+    def forward_visual(self,x, mask=None):
+        x = x + self.drop_path(self.attn(self.norm1(x), mask=mask))
+        x = x + self.drop_path(self.mlp(self.norm2(x)))   
+        return x
+                               
+    def forward_text(self, text, mask):
+        text = self.norm1_text(text + self.drop_path_text(self.attn_text(text, mask=mask)))
+        text = self.norm2_text(text + self.drop_path_text(self.mlp_text(text)))
+                               
+        return text
 
-    def forward(self, x):
-        x = x + self.drop_path(self.attn(self.norm1(x)))
-        x = x + self.drop_path(self.mlp(self.norm2(x)))
+    def forward(self, x, text=None, mask=None, norm_first=True):
+        x = self.forward_visual(x, mask=mask)
+        if text != None:
+            text = self.forward_text(text, mask)
+            return x,text
         return x
 
 
@@ -335,9 +367,13 @@ class TransReID(nn.Module):
                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
             for i in range(depth)])
+        
+#         self.blocks = nn.ModuleList([
+#             nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads,  dim_feedforward=int(embed_dim * mlp_ratio))
+#             for i in range(depth)])
 
         self.norm = norm_layer(embed_dim)
-
+        self.seq_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         # Classifier head
         self.fc = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
         trunc_normal_(self.cls_token, std=.02)
@@ -382,6 +418,8 @@ class TransReID(nn.Module):
             x = x + self.pos_embed
 
         x = self.pos_drop(x)
+        
+        return x
 
         if self.local_feature:
             for blk in self.blocks[:-1]:
@@ -389,15 +427,21 @@ class TransReID(nn.Module):
             return x
 
         else:
-            for blk in self.blocks:
-                x = blk(x)
-
+            
+            text, mask = text[0], text[1]
+#             for blk in self.blocks[:6]:
+#                 x = blk(x)                    
+            
+            for blk in self.blocks:                
+                x,text = blk(x, text, mask=mask)
+                
             x = self.norm(x)
+#             text = self.norm(text)
 
-            return x[:, 0]
+            return x[:, 0], text[:, 0]
 
-    def forward(self, x, cam_label=None, view_label=None):
-        x = self.forward_features(x, cam_label, view_label)
+    def forward(self, x,cam_label=None, view_label=None):
+        x = self.forward_features(x,cam_label, view_label)
         return x
 
     def load_param(self, model_path):
@@ -421,6 +465,7 @@ class TransReID(nn.Module):
                 v = resize_pos_embed(v, self.pos_embed, self.patch_embed.num_y, self.patch_embed.num_x)
             try:
                 self.state_dict()[k].copy_(v)
+            
             except:
                 print('===========================ERROR=========================')
                 print('shape do not match in k :{}: param_dict{} vs self.state_dict(){}'.format(k, v.shape, self.state_dict()[k].shape))

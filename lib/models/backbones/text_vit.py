@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
-from .vit_pytorch import Block, trunc_normal_
+from .vit_pytorch import Block,trunc_normal_
 from lib.utils.directory import load_vocab_dict
 from functools import partial
+import copy
 
 class TextVit(nn.Module):
     def __init__(
@@ -11,6 +12,7 @@ class TextVit(nn.Module):
         vocab_size,
         use_onehot,
         root,
+        share_block = None
     ):
         super().__init__()
         
@@ -33,7 +35,7 @@ class TextVit(nn.Module):
         
         # transformer
         # base version
-        depth = 6
+        depth = 1
         embed_dim = 768
         num_heads = 12
         mlp_ratio = 4.
@@ -44,14 +46,18 @@ class TextVit(nn.Module):
         drop_path_rate = cfg.MODEL.VIT.DROP_PATH
         max_length = cfg.MODEL.GRU.MAX_LENGTH
         
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
+#         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, depth)]
+        dpr = [drop_path_rate for x in torch.linspace(0, drop_path_rate, depth)]
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
         
-        self.blocks = nn.ModuleList([
-            Block(
-                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
-            for i in range(depth)])       
+#         self.blocks = nn.ModuleList([
+#             Block(
+#                 dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+#                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, norm_first=False)
+#             for i in range(depth)]) 
+        
+#         self.blocks = share_block
+#         self.blocks = copy.deepcopy(share_block)
         
         self.out_channels = 768
         self.norm = norm_layer(embed_dim)
@@ -59,8 +65,8 @@ class TextVit(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, max_length + 1, embed_dim))
         
-        encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads)
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=6)
+        encoder_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads,  dim_feedforward=int(embed_dim * mlp_ratio), norm_first=True)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=3)
         
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
@@ -94,12 +100,15 @@ class TextVit(nn.Module):
             key_padding_mask[i,text_length[i]+1:] = 1
             
         key_padding_mask = key_padding_mask.to(torch.bool).to(text.device)
-#         print(key_padding_mask.shape)
-#         print(text.shape)
-        x = self.encoder(text.transpose(0,1),src_key_padding_mask=key_padding_mask).transpose(0,1)
-#         x = text
-#         for blk in self.blocks:
-#             x = blk(x)
+
+        
+#         text = self.encoder(text.transpose(0,1),src_key_padding_mask=key_padding_mask).transpose(0,1)
+#         return x[:, 0]
+        return [text,key_padding_mask]
+        # self
+        x = text
+        for blk in self.blocks[-6:]:
+            x = blk(x, mask=key_padding_mask, norm_first=False)
 #         x = self.norm(x)
 #         print(x.shape)
 #         print(x[:, 0].shape)
@@ -119,7 +128,7 @@ class TextVit(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
 
-def build_text_vit(cfg):  
+def build_text_vit(cfg,share_block = None):  
     use_onehot = cfg.MODEL.GRU.ONEHOT
     vocab_size = cfg.MODEL.GRU.VOCABULARY_SIZE
     root = cfg.ROOT
@@ -127,7 +136,7 @@ def build_text_vit(cfg):
     model = TextVit(cfg,
         vocab_size,
         use_onehot,
-        root,)
+        root,share_block = share_block)
 
     if cfg.MODEL.FREEZE:
         for m in [model.embed, model.gru]:

@@ -82,8 +82,8 @@ class SimpleVitHead(nn.Module):
 
     def forward(self, visual_feature, textual_feature, captions):
         
-        if self.training:
-            cls_score, visual_feature = visual_feature
+#         if self.training:
+#             cls_score, visual_feature = visual_feature
         
         batch_size = visual_feature.size(0)        
         visual_embed = visual_feature.view(batch_size, -1)

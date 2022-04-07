@@ -133,8 +133,8 @@ class build_transformer(nn.Module):
         self.bottleneck.apply(weights_init_kaiming)
 
     def forward(self, x, label=None, cam_label= None, view_label=None):
-        global_feat = self.base(x, cam_label=cam_label, view_label=view_label)
-
+        global_feat = self.base(x,cam_label=cam_label, view_label=view_label)
+        return global_feat
         feat = self.bottleneck(global_feat)
 
         if self.training:
@@ -143,14 +143,14 @@ class build_transformer(nn.Module):
             else:
                 cls_score = self.classifier(feat)
 
-            return cls_score, global_feat  # global feature for triplet loss
+            return [cls_score, global_feat], text_feat  # global feature for triplet loss
         else:
             if self.neck_feat == 'after':
                 # print("Test with feature after BN")
-                return feat
+                return feat,text_feat
             else:
                 # print("Test with feature before BN")
-                return global_feat
+                return global_feat,text_feat
 
     def load_param(self, trained_path):
         param_dict = torch.load(trained_path)
