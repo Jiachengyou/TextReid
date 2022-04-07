@@ -1,7 +1,7 @@
 OUTPUT_DIR: "./exp_prw"
 INPUT:
   DATASET: "PRW"
-  DATA_ROOT: "data/PRW"
+  DATA_ROOT: "../TransPS-main/data/PRW-v16.04.20"
 SOLVER:
   MAX_EPOCHS: 18
 MODEL:

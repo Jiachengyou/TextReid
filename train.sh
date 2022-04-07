@@ -1,0 +1,1 @@
+CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES=3 python train.py --cfg configs/prw.yaml
