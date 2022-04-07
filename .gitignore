@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # customization
 data
 exp*
@@ -142,3 +143,18 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+=======
+*.out
+.ipynb_checkpoints
+*.pyc
+*.npy
+
+output/
+datasets/
+pretrained/
+__pycache__/
+condor_log/
+.cache/
+.nv/
+docker_stderror
+>>>>>>> 0d976ddc32a6cb6d535980fa7e3dc0ac804e0a2c
