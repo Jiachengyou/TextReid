@@ -6,13 +6,13 @@ from einops import rearrange, repeat, reduce
 from .loss import make_loss_evaluator
 
 def masked_mean(t, mask, dim = 1, eps = 1e-6):
-    t = t.masked_fill(mask, 0.)
+    t = t.masked_fill(mask, 0.)    
     numer = t.sum(dim = dim)
+    mask = ~mask
     denom = mask.sum(dim = dim).clamp(min = eps)
     return numer / denom
 
 def mean(t, dim = -1, eps = 1e-6):
-    print(t.shape)
 #     t = t.masked_fill(mask, 0.)
     numer = t.sum(dim = dim)
 #     denom = mask.sum(dim = dim).clamp(min = eps)
@@ -186,7 +186,10 @@ class SimpleFineGrainedHead(nn.Module):
         B,L,D = textual_embed_tokens.shape
         text_mask = torch.zeros(B,B,L)
         for i in range(B):
-            text_mask[i,:,text_length[i]:] = 1        
+            text_mask[i,:,text_length[i]:] = 1  
+        device = visual_embed_tokens.device
+        text_mask = text_mask.to(torch.bool).to(device)
+        
         sim_image_to_text = einsum('b v d, q t d -> b q v t', [visual_embed_tokens, textual_embed_tokens])
         image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max')
 #         image_to_text_mask = rearrange(text_mask, '(m b) t -> m 1 b 1 t 1', m = num_batch_texts)
@@ -195,7 +198,7 @@ class SimpleFineGrainedHead(nn.Module):
         # text_imnage
         text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
 #         image_to_text_mask = rearrange(text_mask, '(m b) t -> m 1 b 1 t 1', m = num_batch_texts)
-        text_to_image_sim = mean(text_to_image, dim = -1)
+        text_to_image_sim = masked_mean(text_to_image, mask=text_mask, dim = -1)
         
 #         print(text_to_image_sim)
 #         print(image_to_text_sim)
@@ -209,4 +212,5 @@ class SimpleFineGrainedHead(nn.Module):
         outputs.append(textual_embed_cls)
         outputs.append(visual_embed_tokens)
         outputs.append(textual_embed_tokens)
+        outputs.append(text_mask[:,0,:])
         return outputs, None

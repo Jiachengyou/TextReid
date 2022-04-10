@@ -10,25 +10,29 @@ from einops import rearrange, repeat, reduce
 from lib.utils.logger import table_log
 
 
-def split_batch(t_feat_list, v_feat_list, mini_batch=32):
+def split_batch(t_feat_list, v_feat_list, text_mask, mini_batch=32):
     sim_matrix = []
 #     batch_v_mask = torch.split(v_mask_list, mini_batch)
     batch_t_feat = torch.split(t_feat_list, mini_batch)
     batch_v_feat = torch.split(v_feat_list, mini_batch)
+    batch_text_mask = torch.split(text_mask, mini_batch)
     with torch.no_grad():
-        for idx1, t_feat in enumerate(batch_t_feat):
+        for idx1, (t_feat, t_mask) in enumerate(zip(batch_t_feat, batch_text_mask)):
             # logger.info('batch_list_t [{}] / [{}]'.format(idx1, len(batch_list_t)))
             each_row = []
+            t_mask = t_mask.unsqueeze(1).expand(-1, mini_batch, -1)
             for idx2, v_feat in enumerate(batch_v_feat):
                 sim_image_to_text = einsum('b v d, q t d -> b q v t', [t_feat, v_feat])
-                image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max')
-                image_to_text_sim = mean(image_to_text, dim = -1)
+                image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max')               
+                len_v_feat = len(v_feat)
+                image_to_text_sim = masked_mean(image_to_text,mask=t_mask[:,:len_v_feat, :], dim = -1)
+#                 image_to_text_sim = mean(image_to_text, dim = -1)
 
                 # text_imnage
                 text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
                 text_to_image_sim = mean(text_to_image, dim = -1)
 
-                similarity_fine = 1/2 * (text_to_image_sim + image_to_text_sim)                 
+                similarity_fine = 1/2 * (text_to_image_sim + image_to_text_sim) 
                 
                 each_row.append(similarity_fine)
             each_row = torch.cat(each_row, dim=1)
@@ -39,6 +43,7 @@ def split_batch(t_feat_list, v_feat_list, mini_batch=32):
 def masked_mean(t, mask, dim = 1, eps = 1e-6):
     t = t.masked_fill(mask, 0.)
     numer = t.sum(dim = dim)
+    mask = ~mask
     denom = mask.sum(dim = dim).clamp(min = eps)
     return numer / denom
 
@@ -138,7 +143,7 @@ def evaluation(
     else:
         image_ids, pids = [], []
         image_global, text_global = [], []
-        image_fine, text_fine = [], []
+        image_fine, text_fine, text_mask = [], [], []
         # FIXME: need optimization
         for idx, prediction in predictions.items():
             image_id, pid = dataset.get_id_info(idx)
@@ -150,6 +155,7 @@ def evaluation(
             if fine:
                 image_fine.append(prediction[2])
                 text_fine.append(prediction[3])
+                text_mask.append(prediction[4])
             
             
 
@@ -171,8 +177,13 @@ def evaluation(
             image_fine = torch.stack(image_fine, dim=0)
             image_fine = image_fine[keep_idx]            
             text_fine = torch.stack(text_fine, dim=0)
-            similarity_fine = split_batch(text_fine, image_fine, mini_batch=64)
+            text_mask = torch.stack(text_mask, dim=0)
+
+
+            similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
             similarity = (similarity + similarity_fine) / 2
+#             similarity = similarity_fine
+
         
 
         if rerank:
