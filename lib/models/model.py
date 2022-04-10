@@ -26,6 +26,11 @@ class Model(nn.Module):
                 cfg, 768, self.textual_model.out_channels
             )
             self.embed_type = "normal"
+        elif cfg.MODEL.EMBEDDING.EMBED_HEAD == "fine":
+            self.embed_model = build_embed(
+                cfg, 768, self.textual_model.out_channels
+            )
+            self.embed_type = "normal"
         else:
             self.embed_model = build_embed(
                 cfg, self.visual_model.out_channels, self.textual_model.out_channels

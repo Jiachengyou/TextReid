@@ -76,7 +76,7 @@ class Block(nn.Module):
 #         self.mlp_text = copy.deepcopy(self.mlp)
         self.norm1_text = copy.deepcopy(self.norm1)
         self.norm2_text = copy.deepcopy(self.norm2)
-        self.drop_path_text = DropPath(0.1)
+#         self.drop_path_text = DropPath(0.1)
     
     
     def forward_visual(self,x, mask):
@@ -91,13 +91,13 @@ class Block(nn.Module):
 #         return text
     
     def forward_text(self, text, mask):
-        x = text + self.drop_path_text(self.attn(self.norm1(text), mask))
-        x = text + self.drop_path_text(self.mlp(self.norm2(text))) 
+        text = text + self.drop_path(self.attn(self.norm1(text), mask))
+        text = text + self.drop_path(self.mlp(self.norm2(text))) 
                                
         return text
 
     def forward(self, x, text=False, mask=None):        
-        if text:
+        if text:            
             assert mask != None, "mask can't be None!"
             x = self.forward_text(x, mask=mask)
         else:
@@ -111,6 +111,8 @@ class ShareBlock(nn.Module):
     ):
         super().__init__()
         
+        
+        self.embed_head = cfg.MODEL.EMBEDDING.EMBED_HEAD
         # transformer
         depth = 12
         embed_dim = 768
@@ -133,6 +135,8 @@ class ShareBlock(nn.Module):
                 drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer)
             for i in range(depth)]) 
         
+        self.blocks_text = copy.deepcopy(self.blocks)
+        
         # image after block
         self.norm = norm_layer(embed_dim)
         self.norm_text = copy.deepcopy(self.norm)
@@ -148,15 +152,20 @@ class ShareBlock(nn.Module):
         for blk in self.blocks:
             visual = blk(visual)
         visual = self.norm(visual)   
-        visual = self.bottleneck(visual[:,0])
+        
         
         # text
         text, mask = text    
-        for blk in self.blocks[-6:]:
-            text = blk(text,text=True,mask=mask)  
+        for blk in self.blocks[-12:]:
+            text = blk(text, text=True, mask=mask)  
         text = self.norm_text(text)
-        text = text[:,0]
         
+        # fine grained
+        if self.embed_head == 'fine':
+            return [visual[:,0], visual[:,1:]], ([text[:,0], text[:,1:]])
+        
+        visual = self.bottleneck(visual[:,0])
+        text = text[:,0]
         return visual, text
 
 

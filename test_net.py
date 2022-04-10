@@ -104,7 +104,7 @@ def main():
             device=cfg.MODEL.DEVICE,
             output_folder=output_folder,
             save_data=False,
-            rerank=True,
+            rerank=False,
         )
         synchronize()
 

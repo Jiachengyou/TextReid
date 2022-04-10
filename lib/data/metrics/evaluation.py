@@ -4,8 +4,49 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch import nn, einsum
+from einops import rearrange, repeat, reduce
 
 from lib.utils.logger import table_log
+
+
+def split_batch(t_feat_list, v_feat_list, mini_batch=32):
+    sim_matrix = []
+#     batch_v_mask = torch.split(v_mask_list, mini_batch)
+    batch_t_feat = torch.split(t_feat_list, mini_batch)
+    batch_v_feat = torch.split(v_feat_list, mini_batch)
+    with torch.no_grad():
+        for idx1, t_feat in enumerate(batch_t_feat):
+            # logger.info('batch_list_t [{}] / [{}]'.format(idx1, len(batch_list_t)))
+            each_row = []
+            for idx2, v_feat in enumerate(batch_v_feat):
+                sim_image_to_text = einsum('b v d, q t d -> b q v t', [t_feat, v_feat])
+                image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max')
+                image_to_text_sim = mean(image_to_text, dim = -1)
+
+                # text_imnage
+                text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
+                text_to_image_sim = mean(text_to_image, dim = -1)
+
+                similarity_fine = 1/2 * (text_to_image_sim + image_to_text_sim)                 
+                
+                each_row.append(similarity_fine)
+            each_row = torch.cat(each_row, dim=1)
+            sim_matrix.append(each_row)
+    sim_matrix = torch.cat(sim_matrix, dim=0)
+    return sim_matrix
+
+def masked_mean(t, mask, dim = 1, eps = 1e-6):
+    t = t.masked_fill(mask, 0.)
+    numer = t.sum(dim = dim)
+    denom = mask.sum(dim = dim).clamp(min = eps)
+    return numer / denom
+
+def mean(t, dim = -1, eps = 1e-6):
+#     t = t.masked_fill(mask, 0.)
+    numer = t.sum(dim = dim)
+#     denom = mask.sum(dim = dim).clamp(min = eps)
+    return numer / t.shape[-1]
 
 
 def rank(similarity, q_pids, g_pids, topk=[1, 5, 10], get_mAP=True):
@@ -80,6 +121,7 @@ def evaluation(
     topk,
     save_data=True,
     rerank=True,
+    fine=True,
 ):
     logger = logging.getLogger("PersonSearch.inference")
     data_dir = os.path.join(output_folder, "inference_data.npz")
@@ -96,7 +138,7 @@ def evaluation(
     else:
         image_ids, pids = [], []
         image_global, text_global = [], []
-
+        image_fine, text_fine = [], []
         # FIXME: need optimization
         for idx, prediction in predictions.items():
             image_id, pid = dataset.get_id_info(idx)
@@ -104,6 +146,12 @@ def evaluation(
             pids.append(pid)
             image_global.append(prediction[0])
             text_global.append(prediction[1])
+            
+            if fine:
+                image_fine.append(prediction[2])
+                text_fine.append(prediction[3])
+            
+            
 
         image_pid = torch.tensor(pids)
         text_pid = torch.tensor(pids)
@@ -118,6 +166,14 @@ def evaluation(
         text_global = F.normalize(text_global, p=2, dim=1)
 
         similarity = torch.matmul(text_global, image_global.t())
+        
+        if fine:
+            image_fine = torch.stack(image_fine, dim=0)
+            image_fine = image_fine[keep_idx]            
+            text_fine = torch.stack(text_fine, dim=0)
+            similarity_fine = split_batch(text_fine, image_fine, mini_batch=64)
+            similarity = (similarity + similarity_fine) / 2
+        
 
         if rerank:
             rtn_mat = k_reciprocal(image_global, text_global)

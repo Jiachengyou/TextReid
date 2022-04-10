@@ -23,31 +23,42 @@ class LossComputation(nn.Module):
         visual_embed,
         textual_embed,
         captions,
+        fine = False,
+        text_to_image_sim = None,
+        image_to_text_sim = None,
+        
     ):
         labels = torch.stack([caption.get_field("id") for caption in captions]).long()
-        if random.uniform(0, 1) >= 0.5:
-            visual_embed_t = visual_embed
-            textual_embed_t = textual_embed
-        else:
-            visual_embed_t = visual_embed
-            textual_embed_t = textual_embed
         loss = {
             "instance_loss": losses.instance_loss(
                 self.projection,
-                visual_embed_t,
-                textual_embed_t,
+                visual_embed,
+                textual_embed,
                 labels,
                 epsilon=self.epsilon,
             ),           
             
             "global_align_loss": losses.global_align_loss(
-                visual_embed_t,
-                textual_embed_t,
+                visual_embed,
+                textual_embed,
                 labels,
                 scale_pos=self.scale_pos,
                 scale_neg=self.scale_neg,
             ),
         }
+        if fine:
+            assert text_to_image_sim != None and image_to_text_sim != None, "local needs sim!"
+            loss["global_align_local_loss"] = 1/2 * (losses.global_align_loss_from_sim(
+                text_to_image_sim,
+                labels,
+                scale_pos=self.scale_pos,
+                scale_neg=self.scale_neg,
+            ) + losses.global_align_loss_from_sim(
+                text_to_image_sim,
+                labels,
+                scale_pos=self.scale_pos,
+                scale_neg=self.scale_neg,
+            ))
         return loss
 
 
