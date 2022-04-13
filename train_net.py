@@ -87,6 +87,7 @@ def train(cfg, output_dir, local_rank, distributed, resume_from, use_tensorboard
     evaluate_period = cfg.SOLVER.EVALUATE_PERIOD
     arguments["max_epoch"] = cfg.SOLVER.NUM_EPOCHS
     arguments["distributed"] = distributed
+    arguments["fine"] = cfg.MODEL.EMBEDDING.EMBED_HEAD == "fine"
 
     do_train(
         model,

@@ -96,7 +96,8 @@ def main():
         logger = setup_logger("PersonSearch", output_folder, get_rank())
         logger.info("Using {} GPUs".format(num_gpus))
         logger.info(cfg)
-
+        fine = cfg.MODEL.EMBEDDING.EMBED_HEAD == "fine"
+        
         inference(
             model,
             data_loader_val,
@@ -105,6 +106,7 @@ def main():
             output_folder=output_folder,
             save_data=False,
             rerank=False,
+            fine=fine,
         )
         synchronize()
 

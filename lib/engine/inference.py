@@ -53,6 +53,7 @@ def inference(
     output_folder="",
     save_data=True,
     rerank=True,
+    fine=True,
 ):
     logger = logging.getLogger("PersonSearch.inference")
     dataset = data_loader.dataset
@@ -93,4 +94,5 @@ def inference(
         save_data=save_data,
         rerank=rerank,
         topk=[1, 5, 10],
+        fine=fine,
     )

@@ -89,7 +89,7 @@ def make_data_loader(cfg, is_train=True, is_distributed=False):
         shuffle = is_distributed
 
     dataset_list = cfg.DATASETS.TRAIN if is_train else cfg.DATASETS.TEST
-
+#     dataset_list = cfg.DATASETS.TRAIN
     transforms = build_transforms(cfg, is_train)
 
     datasets = build_dataset(cfg, dataset_list, transforms, DatasetCatalog, is_train)
