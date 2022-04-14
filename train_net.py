@@ -22,7 +22,7 @@ from lib.utils.logger import setup_logger
 from lib.utils.metric_logger import MetricLogger, TensorboardLogger
 
 
-def set_random_seed(seed=0):
+def set_random_seed(seed=1):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
