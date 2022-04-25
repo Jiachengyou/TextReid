@@ -128,6 +128,26 @@ def global_align_loss(
     return loss
 
 
+def global_cdcr_loss(
+    visual_embed,
+    textual_embed,
+    cdcr_alpha1=1.0,
+    cdcr_alpha2=0.06,
+
+):
+    B, D = visual_embed.shape
+    visual_norm = F.normalize(visual_embed, p=2, dim=1)
+    textual_norm = F.normalize(textual_embed, p=2, dim=1)
+    
+    
+    c = torch.einsum('ac,ad->cd', visual_norm, textual_norm) / B  # DxD
+    # loss
+    on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+    off_diag = c.flatten()[1:].view(D - 1, D + 1)[:, :-1].pow_(2).sum()
+    cdcr_loss = (on_diag * cdcr_alpha1 + off_diag * cdcr_alpha2)
+    return cdcr_loss
+
+
 def global_align_loss_from_sim(
     similarity,
     labels,

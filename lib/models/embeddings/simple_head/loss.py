@@ -54,11 +54,19 @@ class LossComputation(nn.Module):
                 scale_pos=self.scale_pos,
                 scale_neg=self.scale_neg,
             ) + losses.global_align_loss_from_sim(
-                text_to_image_sim,
+                image_to_text_sim,
                 labels,
                 scale_pos=self.scale_pos,
                 scale_neg=self.scale_neg,
             ))
+#             loss["global_align_local_loss"] = losses.global_align_loss_from_sim(
+#                 text_to_image_sim.t(),
+#                 labels,
+#                 scale_pos=self.scale_pos,
+#                 scale_neg=self.scale_neg,
+#             )
+#             loss["global_cdcr_loss"] = 0.01 * losses.global_cdcr_loss(visual_embed, textual_embed)
+            
         return loss
 
 

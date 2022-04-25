@@ -81,7 +81,7 @@ class TripletSampler(BatchSampler):
 
         self.group_ids = torch.as_tensor(self.id_to_img_map)
         self.groups = torch.unique(self.group_ids).sort(0)[0]
-
+    
         self._can_reuse_batches = False
 
     def _prepare_batches(self):
@@ -89,7 +89,7 @@ class TripletSampler(BatchSampler):
         sampled_ids = torch.as_tensor(list(self.sampler))
         order = torch.full((dataset_size,), -1, dtype=torch.int64)
         order[sampled_ids] = torch.arange(len(sampled_ids))
-
+        
         mask = order >= 0
         clusters = [(self.group_ids == i) & mask for i in self.groups]
         relative_order = [order[cluster] for cluster in clusters]
@@ -108,7 +108,6 @@ class TripletSampler(BatchSampler):
         )
         permutation_order = first_index_of_batch.sort(0)[1].tolist()
         batches = [merged[i] for i in permutation_order]
-
         return batches
 
     def __iter__(self):

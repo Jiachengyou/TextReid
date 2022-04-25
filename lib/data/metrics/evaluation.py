@@ -67,6 +67,47 @@ def split_batch2(t_feat_list, v_feat_list, mini_batch=32):
     sim_matrix = torch.cat(sim_matrix, dim=0)
     return sim_matrix
 
+def split_batch3(t_feat_list, v_feat_list, text_mask, mini_batch=32):
+#     print(t_feat_list.shape)
+#     print(v_feat_list.shape)
+#     print(text_mask.shape)
+    sim_matrix = []
+#     batch_v_mask = torch.split(v_mask_list, mini_batch)
+    batch_t_feat = torch.split(t_feat_list, mini_batch)
+    batch_v_feat = torch.split(v_feat_list, mini_batch)
+    batch_text_mask = torch.split(text_mask, mini_batch)
+    with torch.no_grad():
+        for idx2, (t_feat, t_mask) in enumerate(zip(batch_t_feat, batch_text_mask)):        
+            # logger.info('batch_list_t [{}] / [{}]'.format(idx1, len(batch_list_t)))
+            each_row = []
+            for idx1, v_feat in enumerate(batch_v_feat):
+                """
+                q -  batch size of visual_embed_tokens
+                b -  batch size of textual_embed_tokens
+                v - length of visual_embed_tokens
+                t - length of textual_embed_tokens
+                d - dimension of each token
+                """     
+                retrieve_logits = einsum('b t d, q v d -> b q t v', [t_feat, v_feat])
+#                 retrieve_logits = torch.einsum('b q t v, b t->b q t v', [retrieve_logits, t_mask])
+                text_sum = retrieve_logits.shape[-1]
+                visual_sum = retrieve_logits.shape[-2]
+
+                t2v_logits, max_idx1 = retrieve_logits.max(dim=-1)  # b q t v -> b q t
+                v2t_logits, max_idx2 = retrieve_logits.max(dim=-2)  # b q t v -> b q v
+#                 t2v_logits = torch.sum(t2v_logits, dim=2) / (text_sum.unsqueeze(1)) # b q t -> bq
+                t2v_logits = torch.sum(t2v_logits, dim=2) / (text_sum) # b q t -> bq
+                v2t_logits = torch.sum(v2t_logits, dim=2) / (visual_sum) # b q v -> bq
+                
+                similarity_fine = 1/2 * (t2v_logits + v2t_logits) 
+                each_row.append(similarity_fine)
+                
+            each_row = torch.cat(each_row, dim=1)
+            sim_matrix.append(each_row)
+    sim_matrix = torch.cat(sim_matrix, dim=0)
+    return sim_matrix
+
+
 def masked_mean(t, mask, dim = 1, eps = 1e-6):
     t = t.masked_fill(mask, 0.)
     numer = t.sum(dim = dim)
@@ -184,7 +225,6 @@ def evaluation(
                 text_fine.append(prediction[3])
                 text_mask.append(prediction[4])
             
-            
 
         image_pid = torch.tensor(pids)
         text_pid = torch.tensor(pids)
@@ -198,9 +238,12 @@ def evaluation(
         image_global = F.normalize(image_global, p=2, dim=1)
         text_global = F.normalize(text_global, p=2, dim=1)
         
-
+        
 #         np.save("image_pid.npy",image_pid.cpu().numpy())        
 #         np.save("text_pid.npy",text_pid.cpu().numpy())
+# #         np.save("train_text.npy",text_global.cpu().numpy()) 
+#         np.save("test_text.npy",text_global.cpu().numpy()) 
+#         np.save("test_image.npy",image_global.cpu().numpy())         
 #         print("save over !")
         
         similarity = torch.matmul(text_global, image_global.t())
@@ -216,10 +259,19 @@ def evaluation(
             
 
 
-            similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
+#             similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
 #             similarity_fine = split_batch2(text_fine, image_fine,mini_batch=64)
-            similarity = (similarity + similarity_fine) / 2
+            # vision to image
+            similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
+            
+#             similarity = similarity + 0.7 * similarity_fine
 #             similarity = similarity_fine
+
+            np.save("similarity.npy",similarity.cpu().numpy())        
+            np.save("similarity_fine.npy",similarity_fine.cpu().numpy())
+            print("save over !")
+            similarity = (similarity + similarity_fine) / 2
+
 
         
 

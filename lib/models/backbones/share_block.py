@@ -137,6 +137,12 @@ class ShareBlock(nn.Module):
         
         self.blocks_text = copy.deepcopy(self.blocks)
         
+        self.blocks_extra_visual = Block(
+                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=0.1, norm_layer=norm_layer)
+        
+        self.blocks_extra_textual = copy.deepcopy(self.blocks_extra_visual)
+        
         # image after block
         self.norm = norm_layer(embed_dim)
         self.norm_text = copy.deepcopy(self.norm)
@@ -151,13 +157,16 @@ class ShareBlock(nn.Module):
         # image
         for blk in self.blocks:
             visual = blk(visual)
+        visual = self.blocks_extra_visual(visual)
         visual = self.norm(visual)   
         
         
         # text
         text, mask = text    
-        for blk in self.blocks[-12:]:
-            text = blk(text, text=True, mask=mask)  
+        for blk in self.blocks:
+            text = blk(text, text=True, mask=mask) 
+        text = self.blocks_extra_textual(text, text=True, mask=mask)
+#         print(111)
         text = self.norm_text(text)
         
         # fine grained

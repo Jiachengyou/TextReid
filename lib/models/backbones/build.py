@@ -3,6 +3,7 @@ from .text_vit import build_text_vit
 from .m_resnet import build_m_resnet
 from .resnet import build_resnet
 from .transformer import build_vit
+from .clip import build_clipvit
 from .share_block import build_share_block
 
 def build_visual_model(cfg):
@@ -12,6 +13,8 @@ def build_visual_model(cfg):
         return build_m_resnet(cfg)
     if cfg.MODEL.VISUAL_MODEL in ["vit"]:
         return build_vit(cfg)
+    if cfg.MODEL.VISUAL_MODEL in ["clipvit"]:
+        return build_clipvit(cfg)
     raise NotImplementedError
 
 
