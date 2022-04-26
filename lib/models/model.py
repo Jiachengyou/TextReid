@@ -71,10 +71,9 @@ class Model(nn.Module):
         visual = self.visual_model(images)
 
         
-        visual_feat, textual_feat = self.share_block_model(visual, text)
-
-#         visual_feat, textual_feat = self.forward_share(visual_feat, text, mask=key_padding_mask)
-        
+#         visual_feat, textual_feat = self.share_block_model(visual, text)
+        visual_feat, textual_feat = visual[1], text
+    
         outputs_embed, losses_embed = self.embed_model(
             visual_feat, textual_feat, captions
         )

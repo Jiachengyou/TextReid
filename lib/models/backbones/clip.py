@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -9,16 +10,33 @@ def build_clipvit(cfg):
         
         kwargs = {
             "embed_dim": 512,
+            "input_resolution": (384,128)
         }
         model = visual_transformer_B32(**kwargs)
+#         model = visual_transformer_B16(**kwargs)
 
         return model
-    
+
+def resize_pos_embed(posemb, posemb_new, hight, width):
+    # Rescale the grid of position embeddings when loading from state_dict. Adapted from
+    # https://github.com/google-research/vision_transformer/blob/00883dd691c63a6830751563748663526e811cee/vit_jax/checkpoint.py#L224
+    ntok_new = posemb_new.shape[1]
+
+    posemb_token, posemb_grid = posemb[:, :1], posemb[0, 1:]
+    ntok_new -= 1
+
+    gs_old = int(math.sqrt(len(posemb_grid)))
+    print('Resized position embedding from size:{} to size: {} with height:{} width: {}'.format(posemb.shape, posemb_new.shape, hight, width))
+    posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
+    posemb_grid = F.interpolate(posemb_grid, size=(hight, width), mode='bilinear')
+    posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, hight * width, -1)
+    posemb = torch.cat([posemb_token, posemb_grid], dim=1)
+    return posemb
     
 
 
 class VisualTransformer(nn.Module):
-    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, embed_dim: int, checkpoint: bool, dropout: float=0, emb_dropout: float=0):
+    def __init__(self, input_resolution: int or tuple, patch_size: int, width: int, layers: int, heads: int, embed_dim: int, checkpoint: bool, dropout: float=0, emb_dropout: float=0):
         super().__init__()
         self.input_resolution = input_resolution
         output_dim = embed_dim
@@ -30,7 +48,12 @@ class VisualTransformer(nn.Module):
 
         scale = width ** -0.5
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
-        self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+        
+        if isinstance(input_resolution, int):
+            self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+        if isinstance(input_resolution, tuple):
+            self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution[0] // patch_size) * (input_resolution[1] // patch_size) + 1, width))   
+            
         self.ln_pre = LayerNorm(width)
 
         self.transformer = Transformer(width, layers, heads, checkpoint=checkpoint, dropout=dropout, emb_dropout=emb_dropout)
@@ -38,6 +61,30 @@ class VisualTransformer(nn.Module):
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
         self.initialize_parameters()
+        
+        pretrained = True
+        
+        if pretrained:
+            self.load_param()
+            
+    def load_param(self):
+        path = './pretrained/clip/declip_vitb32_convert.pth.tar'
+        path = './pretrained/clip/ViT-B-16_visual.pt'
+        path = './pretrained/clip/ViT-B-32_visual.pt'
+        checkpoint = torch.load(path)
+#         self.load_state_dict(checkpoint['state_dict'])
+        for k, v in checkpoint.items():
+            if k == 'positional_embedding' and v.shape != self.positional_embedding.shape:
+                print(111)
+                v = resize_pos_embed(v, self.positional_embedding, self.input_resolution[0], self.input_resolution[1])
+            try:
+                self.state_dict()[k].copy_(v)
+            except:
+                print('===========================ERROR=========================')
+                print('shape do not match in k :{}: param_dict{} vs self.state_dict(){}'.format(k, v.shape, self.state_dict()[k].shape))
+                
+#         self.load_state_dict(checkpoint)
+        print('Loading pretrained model from {}'.format(path))
 
     def initialize_parameters(self):
         nn.init.normal_(self.positional_embedding, std=0.01)
@@ -67,6 +114,9 @@ class VisualTransformer(nn.Module):
 
 
     def forward(self, x: torch.Tensor, return_dense=False, return_feature=False):
+        
+        return_feature = True
+        
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         # shape = [*, width, grid ** 2]
         x = x.reshape(x.shape[0], x.shape[1], -1)
@@ -85,6 +135,7 @@ class VisualTransformer(nn.Module):
 
         if self.proj is not None:
             x = x @ self.proj
+        
 
         ret = [x]
         if return_dense:
