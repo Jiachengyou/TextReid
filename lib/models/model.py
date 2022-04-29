@@ -69,10 +69,9 @@ class Model(nn.Module):
         
         text = self.textual_model(captions)
         visual = self.visual_model(images)
-
         
-#         visual_feat, textual_feat = self.share_block_model(visual, text)
-        visual_feat, textual_feat = visual[1], text
+        visual_feat, textual_feat = self.share_block_model(visual, text)
+#         visual_feat, textual_feat = visual[1], text
     
         outputs_embed, losses_embed = self.embed_model(
             visual_feat, textual_feat, captions

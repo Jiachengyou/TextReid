@@ -28,7 +28,7 @@ def resize_pos_embed(posemb, posemb_new, hight, width):
     gs_old = int(math.sqrt(len(posemb_grid)))
     print('Resized position embedding from size:{} to size: {} with height:{} width: {}'.format(posemb.shape, posemb_new.shape, hight, width))
     posemb_grid = posemb_grid.reshape(1, gs_old, gs_old, -1).permute(0, 3, 1, 2)
-    posemb_grid = F.interpolate(posemb_grid, size=(hight, width), mode='bilinear')
+    posemb_grid = F.interpolate(posemb_grid.float(), size=(hight, width), mode='bilinear')
     posemb_grid = posemb_grid.permute(0, 2, 3, 1).reshape(1, hight * width, -1)
     posemb = torch.cat([posemb_token, posemb_grid], dim=1)
     return posemb
@@ -69,14 +69,13 @@ class VisualTransformer(nn.Module):
             
     def load_param(self):
         path = './pretrained/clip/declip_vitb32_convert.pth.tar'
-        path = './pretrained/clip/ViT-B-16_visual.pt'
+#         path = './pretrained/clip/ViT-B-16_visual.pt'
         path = './pretrained/clip/ViT-B-32_visual.pt'
         checkpoint = torch.load(path)
-#         self.load_state_dict(checkpoint['state_dict'])
+#         self.load_state_dict(checkpoint)
         for k, v in checkpoint.items():
             if k == 'positional_embedding' and v.shape != self.positional_embedding.shape:
-                print(111)
-                v = resize_pos_embed(v, self.positional_embedding, self.input_resolution[0], self.input_resolution[1])
+                v = resize_pos_embed(v.unsqueeze(0), self.positional_embedding.unsqueeze(0), self.input_resolution[0] // 32, self.input_resolution[1] // 32)[0]
             try:
                 self.state_dict()[k].copy_(v)
             except:
@@ -116,7 +115,6 @@ class VisualTransformer(nn.Module):
     def forward(self, x: torch.Tensor, return_dense=False, return_feature=False):
         
         return_feature = True
-        
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         # shape = [*, width, grid ** 2]
         x = x.reshape(x.shape[0], x.shape[1], -1)

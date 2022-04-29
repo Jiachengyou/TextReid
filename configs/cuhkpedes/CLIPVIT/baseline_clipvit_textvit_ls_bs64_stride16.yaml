@@ -2,7 +2,7 @@ MODEL:
   WEIGHT: "imagenet"
   FREEZE: False
   VISUAL_MODEL: "clipvit"
-  TEXTUAL_MODEL: "bigru"
+  TEXTUAL_MODEL: "vit"
   NUM_CLASSES: 11003
   VIT:
     STRIDE_SIZE: [16, 16]

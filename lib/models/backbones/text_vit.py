@@ -103,7 +103,7 @@ class TextVit(nn.Module):
 
         
         text = self.encoder(text.transpose(0,1),src_key_padding_mask=key_padding_mask).transpose(0,1)
-#         return x[:, 0]
+#         return text[:, 0]
         return [text,key_padding_mask]
         # self
         x = text

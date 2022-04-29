@@ -1,18 +1,16 @@
 MODEL:
   WEIGHT: "imagenet"
   FREEZE: False
-  VISUAL_MODEL: "clipvit"
+  VISUAL_MODEL: "vit"
   TEXTUAL_MODEL: "bigru"
   NUM_CLASSES: 11003
-  VIT:
-    STRIDE_SIZE: [16, 16]
   GRU:
     ONEHOT: "clip_vit"
     EMBEDDING_SIZE: 512
     NUM_UNITS: 512
     VOCABULARY_SIZE: 512
     DROPOUT_KEEP_PROB: 1.0
-    MAX_LENGTH: 105
+    MAX_LENGTH: 100
   RESNET:
     RES5_STRIDE: 1
   EMBEDDING:
@@ -20,6 +18,12 @@ MODEL:
     FEATURE_SIZE: 256
     DROPOUT_PROB: 0.0
     EPSILON: 0.1
+  VIT:
+    JPM: False
+    RE_ARRANGE: False
+#     PRETRAIN_PATH: './pretrained/clip/vit_base_ics_cfs_lup.pth'
+#     STEM_CONV: True
+#     PRETRAIN_PATH: './pretrained/clip/transformer_120.pth'
 INPUT:
   HEIGHT: 384
   WIDTH: 128
@@ -30,13 +34,13 @@ DATASETS:
   TRAIN: ("cuhkpedes_train", )
   TEST: ("cuhkpedes_test", )
 SOLVER:
-  IMS_PER_BATCH: 64
-  NUM_EPOCHS: 60
+  IMS_PER_BATCH: 96
+  NUM_EPOCHS: 80
   BASE_LR: 0.0001
-  WEIGHT_DECAY: 0.0004
+  WEIGHT_DECAY: 0.00004
   CHECKPOINT_PERIOD: 40
   LRSCHEDULER: 'step'
-  STEPS: (40,50,)
+  STEPS: (40, 70)
   WARMUP_FACTOR: 0.1
   WARMUP_EPOCHS: 5
 TEST:

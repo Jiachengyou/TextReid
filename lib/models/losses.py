@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from lib.utils.triplt import TripletLoss
+
 
 class CrossEntropyLabelSmooth(nn.Module):
     """Cross entropy loss with label smoothing regularizer.
@@ -37,10 +39,24 @@ class CrossEntropyLabelSmooth(nn.Module):
         targets = (1 - self.epsilon) * targets + self.epsilon / self.num_classes
         loss = (-targets * log_probs).mean(0).sum()
         return loss
+    
+Triplet_loss = TripletLoss(0.3)
+    
+def triplt_loss(
+    projection, visual_embed, textual_embed, labels, scale=1, norm=False, epsilon=0.0
+):
+    
+    
+    tri_loss_visual = Triplet_loss(visual_embed, labels, normalize_feature=False)[0]
+    tri_loss_textual = Triplet_loss(textual_embed, labels, normalize_feature=False)[0]
+    
+    loss = tri_loss_visual + tri_loss_textual
+
+    return loss
 
 
 def instance_loss(
-    projection, visual_embed, textual_embed, labels, scale=1, norm=False, epsilon=0.0
+    projection, projection_text, visual_embed, textual_embed, labels, scale=1, norm=False, epsilon=0.0
 ):
     if norm:
         visual_norm = F.normalize(visual_embed, p=2, dim=-1)
@@ -49,9 +65,9 @@ def instance_loss(
         visual_norm = visual_embed
         textual_norm = textual_embed
     projection_norm = F.normalize(projection, p=2, dim=0)
-
+    projection_norm_text = F.normalize(projection_text, p=2, dim=0)
     visual_logits = scale * torch.matmul(visual_norm, projection_norm)
-    textual_logits = scale * torch.matmul(textual_norm, projection_norm)
+    textual_logits = scale * torch.matmul(textual_norm, projection_norm_text)
 
     if epsilon > 0:
         criterion = CrossEntropyLabelSmooth(num_classes=projection_norm.shape[1])

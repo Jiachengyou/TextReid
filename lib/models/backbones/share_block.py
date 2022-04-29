@@ -157,15 +157,15 @@ class ShareBlock(nn.Module):
         # image
         for blk in self.blocks:
             visual = blk(visual)
-        visual = self.blocks_extra_visual(visual)
-        visual = self.norm(visual)   
+#         visual = self.blocks_extra_visual(visual)
+        visual = self.norm(visual)  
         
         
         # text
         text, mask = text    
         for blk in self.blocks:
             text = blk(text, text=True, mask=mask) 
-        text = self.blocks_extra_textual(text, text=True, mask=mask)
+#         text = self.blocks_extra_textual(text, text=True, mask=mask)
 #         print(111)
         text = self.norm_text(text)
         

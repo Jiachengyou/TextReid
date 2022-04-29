@@ -16,6 +16,10 @@ class LossComputation(nn.Module):
             torch.randn(cfg.MODEL.EMBEDDING.FEATURE_SIZE, cfg.MODEL.NUM_CLASSES),
             requires_grad=True,
         )
+        self.projection_text = Parameter(
+            torch.randn(cfg.MODEL.EMBEDDING.FEATURE_SIZE, cfg.MODEL.NUM_CLASSES),
+            requires_grad=True,
+        )
         nn.init.xavier_uniform_(self.projection.data, gain=1)
 
     def forward(
@@ -30,21 +34,28 @@ class LossComputation(nn.Module):
     ):
         labels = torch.stack([caption.get_field("id") for caption in captions]).long()
         loss = {
-            "instance_loss": losses.instance_loss(
+            "triplt_loss": losses.triplt_loss(
                 self.projection,
                 visual_embed,
                 textual_embed,
                 labels,
                 epsilon=self.epsilon,
-            ),           
-            
+            ),  
+#             "instance_loss": losses.instance_loss(
+#                 self.projection,
+#                 self.projection_text,
+#                 visual_embed,
+#                 textual_embed,
+#                 labels,
+#                 epsilon=self.epsilon,
+#             ),          
             "global_align_loss": losses.global_align_loss(
                 visual_embed,
                 textual_embed,
                 labels,
                 scale_pos=self.scale_pos,
                 scale_neg=self.scale_neg,
-            ),
+            ) * 1.5,
         }
         if fine:
             assert text_to_image_sim != None and image_to_text_sim != None, "local needs sim!"
