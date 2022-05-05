@@ -121,6 +121,7 @@ def do_train(
         scheduler.step()
 
         if epoch % evaluate_period == 0:
+#             checkpointer.save("epoch_{:d}".format(epoch), **arguments)
             top1 = inference(model, data_loader_val[0], save_data=False, rerank=False, fine=arguments["fine"])
             meters.update(top1=top1)
             if top1 > best_top1:

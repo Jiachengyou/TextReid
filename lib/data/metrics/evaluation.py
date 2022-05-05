@@ -9,6 +9,36 @@ from einops import rearrange, repeat, reduce
 
 from lib.utils.logger import table_log
 
+def split_batch_weight(t_feat_list, v_feat_list, text_weight, image_weight, mini_batch=32):
+    sim_matrix = []
+#     batch_v_mask = torch.split(v_mask_list, mini_batch)
+    batch_t_feat = torch.split(t_feat_list, mini_batch)
+    batch_v_feat = torch.split(v_feat_list, mini_batch)
+    batch_text_weight = torch.split(text_weight, mini_batch)
+    batch_image_weight = torch.split(image_weight, mini_batch)    
+    with torch.no_grad():
+        for idx1, (t_feat, t_weight) in enumerate(zip(batch_t_feat, batch_text_weight)):
+            # logger.info('batch_list_t [{}] / [{}]'.format(idx1, len(batch_list_t)))
+            each_row = []
+            for idx2, (v_feat, v_weight) in enumerate(zip(batch_v_feat, batch_image_weight)):
+                sim_image_to_text = einsum('b v d, q t d -> b q v t', [t_feat, v_feat])
+                image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max')               
+                image_to_text = einsum('b q v, b v -> b q', [image_to_text, t_weight])
+
+                # text_imnage
+                text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
+                text_to_image = einsum('b q v, q v -> b q', [text_to_image, v_weight])
+
+                
+#                 similarity_fine = text_to_image
+                similarity_fine = 1/2 * (text_to_image + image_to_text) 
+                
+                each_row.append(similarity_fine)
+            each_row = torch.cat(each_row, dim=1)
+            sim_matrix.append(each_row)
+    sim_matrix = torch.cat(sim_matrix, dim=0)
+    return sim_matrix
+
 
 def split_batch(t_feat_list, v_feat_list, text_mask, mini_batch=32):
     sim_matrix = []
@@ -31,8 +61,9 @@ def split_batch(t_feat_list, v_feat_list, text_mask, mini_batch=32):
                 # text_imnage
                 text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
                 text_to_image_sim = mean(text_to_image, dim = -1)
-
-                similarity_fine = 1/2 * (text_to_image_sim + image_to_text_sim) 
+                
+                similarity_fine = text_to_image_sim
+#                 similarity_fine = 1/2 * (text_to_image_sim + image_to_text_sim) 
                 
                 each_row.append(similarity_fine)
             each_row = torch.cat(each_row, dim=1)
@@ -196,6 +227,7 @@ def evaluation(
     rerank=True,
     fine=True,
 ):
+    WEIGHT = True
     logger = logging.getLogger("PersonSearch.inference")
     data_dir = os.path.join(output_folder, "inference_data.npz")
 
@@ -212,6 +244,8 @@ def evaluation(
         image_ids, pids = [], []
         image_global, text_global = [], []
         image_fine, text_fine, text_mask = [], [], []
+        image_weight, text_weight = [], []
+        
         # FIXME: need optimization
         for idx, prediction in predictions.items():
             image_id, pid = dataset.get_id_info(idx)
@@ -223,7 +257,12 @@ def evaluation(
             if fine:               
                 image_fine.append(prediction[2])
                 text_fine.append(prediction[3])
-                text_mask.append(prediction[4])
+                
+                if WEIGHT:
+                    image_weight.append(prediction[4])
+                    text_weight.append(prediction[5])
+                else:
+                    text_mask.append(prediction[4])
             
 
         image_pid = torch.tensor(pids)
@@ -255,21 +294,29 @@ def evaluation(
             image_fine = torch.stack(image_fine, dim=0)
             image_fine = image_fine[keep_idx]            
             text_fine = torch.stack(text_fine, dim=0)
-            text_mask = torch.stack(text_mask, dim=0)
             
+            if WEIGHT:
+                image_weight = torch.stack(image_weight, dim=0)
+                image_weight = image_weight[keep_idx] 
+                text_weight = torch.stack(text_weight, dim=0)
+                similarity_fine = split_batch_weight(text_fine, image_fine, text_weight, image_weight, mini_batch=64)
+            else:
+                text_mask = torch.stack(text_mask, dim=0)
+                similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
 
 
 #             similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
 #             similarity_fine = split_batch2(text_fine, image_fine,mini_batch=64)
             # vision to image
-            similarity_fine = split_batch(text_fine, image_fine,text_mask, mini_batch=64)
+            
+        
             
 #             similarity = similarity + 0.7 * similarity_fine
 #             similarity = similarity_fine
 
-            np.save("similarity.npy",similarity.cpu().numpy())        
-            np.save("similarity_fine.npy",similarity_fine.cpu().numpy())
-            print("save over !")
+#             np.save("similarity.npy",similarity.cpu().numpy())        
+#             np.save("similarity_fine.npy",similarity_fine.cpu().numpy())
+#             print("save over !")
             similarity = (similarity + similarity_fine) / 2
 
 

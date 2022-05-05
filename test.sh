@@ -5,8 +5,8 @@ CONFIG=configs/cuhkpedes/baseline_gru_cliprn50_ls_bs128_vit.yaml
 CONFIG=configs/cuhkpedes/VIT/baseline_gru_clipvit_ls_bs128_stride14.yaml
 CONFIG=configs/cuhkpedes/VIT/baseline_textvit_clipvit_ls_bs64_stride16_fine.yaml
 # CONFIG=configs/cuhkpedes/VIT/baseline_textvit_clipvit_ls_bs64_stride16.yaml
-OUTDIR=./VIT/share_layer12_bs64_fine_womask
-RESUME=./output/VIT/share_layer12_bs64_fine_womask/best.pth
-CUDA_VISIBLE_DEVICES=1 python test_net.py --config-file $CONFIG --checkpoint-file $RESUME
+OUTDIR=./VIT/share_layer12_bs64_seed0_wofine_wd4e-4_fine_weight
+RESUME=./output/VIT/share_layer12_bs64_seed0_wofine_wd4e-4_fine_weight/epoch_1.pth
+CUDA_VISIBLE_DEVICES=0 python test_net.py --config-file $CONFIG --checkpoint-file $RESUME
 # RESUNME
 # --use-tensorboard

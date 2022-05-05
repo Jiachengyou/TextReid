@@ -74,7 +74,7 @@ def build_simple_vit_head(cfg, visual_size, textual_size):
     return model
 
 def build_simple_fine_head(cfg, visual_size, textual_size):
-    model = SimpleFineGrainedHead(cfg, visual_size, textual_size)
+    model = SimpleFineGrainedHeadWeight(cfg, visual_size, textual_size)
     return model
 
 
@@ -494,6 +494,147 @@ class SimpleFineGrainedHead4(nn.Module):
         outputs.append(visual_embed_tokens)
         outputs.append(textual_embed_tokens)
         outputs.append(text_mask)
+        return outputs, None
+    
+class SimpleFineGrainedHeadWeight(nn.Module):
+    def __init__(
+        self,
+        cfg,
+        visual_size,
+        textual_size,
+    ):
+        super().__init__()
+        self.embed_size = cfg.MODEL.EMBEDDING.FEATURE_SIZE
+        
+        self.visual_embed_layer = nn.Linear(visual_size, self.embed_size)
+        self.textual_embed_layer = nn.Linear(textual_size, self.embed_size)
+        
+        self.visual_embed_layer_tokens = nn.Linear(visual_size, self.embed_size)
+        self.textual_embed_layer_tokens = nn.Linear(textual_size, self.embed_size)
+        
+        # add
+        self.visual_weight_fc = nn.Linear(self.embed_size, 1)
+        self.textual_weight_fc = nn.Linear(self.embed_size, 1)
+
+        self.loss_evaluator = make_loss_evaluator(cfg)
+        self._init_weight()
+
+    def _init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, a=0, mode="fan_out")
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, visual_feature, textual_feature, captions):
+        
+        visual_feature_cls, visual_feature_tokens = visual_feature
+        textual_feature_cls, textual_feature_tokens = textual_feature
+        
+
+        visual_embed_cls = self.visual_embed_layer(visual_feature_cls)
+        textual_embed_cls = self.textual_embed_layer(textual_feature_cls)
+        
+        visual_embed_tokens = self.visual_embed_layer_tokens(visual_feature_tokens)
+        textual_embed_tokens = self.textual_embed_layer_tokens(textual_feature_tokens)
+        
+        textual_weight = self.textual_weight_fc(textual_embed_tokens).squeeze(2)  # B x N_t x D -> B x N_t
+        visual_weight = self.visual_weight_fc(visual_embed_tokens).squeeze(2) # B x N_v x D -> B x N_v
+                
+     
+        # compute fine-grained similarity
+        
+        text_length = torch.stack([caption.length for caption in captions], dim=1)
+        text_length = text_length.view(-1)
+        B,L,D = textual_embed_tokens.shape
+        text_mask = torch.zeros(B,L)
+        for i in range(B):
+            text_mask[i, text_length[i]:] = 1  
+        
+        device = textual_embed_tokens.device
+        textual_weight.masked_fill_(torch.tensor((text_mask), dtype=torch.bool).to(device), float("-inf"))
+        textual_weight = torch.softmax(textual_weight, dim=-1)  # B x N_t
+        visual_weight = torch.softmax(visual_weight, dim=-1)  # B x N_v
+        
+        visual_embed_tokens, textual_embed_tokens = map(l2norm, (visual_embed_tokens, textual_embed_tokens))
+        
+        """
+        b -  batch size of visual_embed_tokens
+        q -  batch size of textual_embed_tokens
+        v - length of visual_embed_tokens
+        t - length of textual_embed_tokens
+        d - dimension of each token
+        """
+
+        sim_image_to_text = einsum('b v d, q t d -> b q v t', [visual_embed_tokens, textual_embed_tokens])
+        
+        
+        image_to_text = reduce(sim_image_to_text, '... v i -> ... v', 'max') # b q v
+        image_to_text = einsum('b q v, b v -> b q', [image_to_text, visual_weight])
+        
+        # text_imnage
+        text_to_image = reduce(sim_image_to_text, '... v i -> ... i', 'max')
+        text_to_image = einsum('b q v, q v -> b q', [text_to_image, textual_weight])
+        
+        cdcr_loss = None
+        
+        # global_cdcr_loss
+        cdcr_alpha1 = 1.0
+        cdcr_alpha2 = 0.06
+        _, max_idx1 = sim_image_to_text.max(dim=-1)
+        _, max_idx2 = sim_image_to_text.max(dim=-2)
+        max_idx1 = max_idx1[torch.arange(max_idx1.shape[0]), torch.arange(max_idx1.shape[1])]
+        max_idx2 = max_idx2[torch.arange(max_idx2.shape[0]), torch.arange(max_idx2.shape[1])]
+        max_v_feat = visual_embed_tokens[torch.arange(max_idx2.shape[0]).repeat_interleave(max_idx2.shape[1]),
+                                       max_idx2.flatten()].squeeze(1)
+        max_t_feat = textual_embed_tokens[torch.arange(max_idx1.shape[0]).repeat_interleave(max_idx1.shape[1]),
+                                        max_idx1.flatten()].squeeze(1)
+        
+        t_feat = textual_embed_tokens.reshape(-1, textual_embed_tokens.shape[-1])
+        v_feat = visual_embed_tokens.reshape(-1, visual_embed_tokens.shape[-1])
+        
+      
+        t_weight = textual_weight.flatten()
+        v_weight = visual_weight.flatten()
+
+        z_a_norm = (t_feat - t_feat.mean(0)) / t_feat.std(0)  # (BxN_t)xD
+        z_b_norm = (max_v_feat - max_v_feat.mean(0)) / max_v_feat.std(0)  # (BxN_t)xD
+
+        x_a_norm = (v_feat - v_feat.mean(0)) / v_feat.std(0)  # (BxN_v)xD
+        x_b_norm = (max_t_feat - max_t_feat.mean(0)) / max_t_feat.std(0)  # (BxN_v)xD
+
+        # cross-correlation matrix
+        N, D = z_a_norm.shape
+        B = textual_embed_tokens.shape[0]
+        c1 = torch.einsum("acd,a->cd", torch.einsum('ac,ad->acd', z_a_norm, z_b_norm),
+                          t_weight) / B  # DxD
+        c2 = torch.einsum("acd,a->cd", torch.einsum('ac,ad->acd', x_a_norm, x_b_norm),
+                          v_weight) / B  # DxD
+        c = (c1 + c2) / 2.0
+        # loss
+        on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
+        off_diag = c.flatten()[1:].view(D - 1, D + 1)[:, :-1].pow_(2).sum()
+        cdcr_loss = (on_diag * cdcr_alpha1 + off_diag * cdcr_alpha2)
+        cdcr_loss = 0.1 * cdcr_loss
+#         print(cdcr_loss)
+        
+        
+        ### 
+        if self.training:
+            losses = self.loss_evaluator(visual_embed_cls, textual_embed_cls, captions, 
+                    fine=True, text_to_image_sim=text_to_image, image_to_text_sim=image_to_text, global_cdcr_loss=cdcr_loss)
+            return None, losses
+
+        outputs = list()
+        outputs.append(visual_embed_cls)
+        outputs.append(textual_embed_cls)
+        outputs.append(visual_embed_tokens)
+        outputs.append(textual_embed_tokens)
+        outputs.append(visual_weight)
+        outputs.append(textual_weight)
+        
         return outputs, None
     
     
